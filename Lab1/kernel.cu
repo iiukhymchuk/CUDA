@@ -22,7 +22,7 @@ __global__ void calculateKernel(double* c, const double* a, const double* b, lon
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
     for (int i = index; i < size; i += stride)
-        c[i] = (a[i] + b[i]) * 4 + 5;
+        c[i] = (a[i] - b[i]) * 4 + 5;
 }
 
 int main()
