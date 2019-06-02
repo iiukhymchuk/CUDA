@@ -6,12 +6,19 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <time.h>
 
 #define MAX_THREADS_X_IN_BLOCK_SIZE 1024
-#define BLOCK_X_AMOUNT 1024
-#define MAX_CHUNK_ARRAY_SIZE (MAX_THREADS_X_IN_BLOCK_SIZE * BLOCK_X_AMOUNT)
+#define MAX_BLOCK_X_AMOUNT 1024
+#define OPTIMAL_AMOUNT_THREADS_IN_BLOCK_SIZE 256
+#define OPTIMAL_BLOCKS_AMOUNT 512
+
+#define MAX_CHUNK_ARRAY_SIZE (MAX_THREADS_X_IN_BLOCK_SIZE * MAX_BLOCK_X_AMOUNT)
 
 using namespace std;
+
+clock_t startCUDAWorkWithoutAllocation, endCUDAWorkWithoutAllocation;
+double timeUsedCUDAWorkWithoutAllocation = 0;
 
 cudaError_t arrayCalculations(double* c, const double* a, const double* b, unsigned int size);
 unsigned int loadFileToArray(std::ifstream &file, double* a, unsigned int sizeToRead);
@@ -47,6 +54,13 @@ int main()
     std::ifstream file1(fileName1);
     std::ifstream file2(fileName2);
 
+    clock_t startProgramWork, endProgramWork;
+    clock_t startCUDAWork, endCUDAWork;
+
+    double timeUsedProgramWork = 0;
+    double timeUsedCUDAWork = 0;
+
+    startProgramWork = clock();
     for (size_t i = 0; i < numberOfIterations; i++)
     {
         // setArrays from files
@@ -64,12 +78,17 @@ int main()
             return 1;
         }
 
+        
+
+        startCUDAWork = clock();
         // Add vectors in parallel.
         cudaStatus = arrayCalculations(c, a, b, setSize1);
         if (cudaStatus != cudaSuccess) {
             fprintf(stderr, "arrayCalculations failed!");
             return 1;
         }
+        endCUDAWork = clock();
+        timeUsedCUDAWork += ((double)(endCUDAWork - startCUDAWork)) / CLOCKS_PER_SEC;
 
         // save result array to file
         int result = saveArrayToFile(c, fileNameResult, setSize1);
@@ -93,6 +112,13 @@ int main()
         fprintf(stderr, "cudaDeviceReset failed!");
         return 1;
     }
+
+    endProgramWork = clock();
+    timeUsedProgramWork += ((double)(endProgramWork - startProgramWork)) / CLOCKS_PER_SEC;
+
+    printf("Time elapsed: %f\n", timeUsedProgramWork);
+    printf("Time elapsed for CUDA work: %f\n", timeUsedCUDAWork);
+    printf("Time elapsed for CUDA without memory allocation: %f\n", timeUsedCUDAWorkWithoutAllocation);
 
     return 0;
 }
@@ -187,6 +213,7 @@ cudaError_t arrayCalculations(double* c, const double* a, const double* b, unsig
         goto Error;
     }
 
+    startCUDAWorkWithoutAllocation = clock();
     // Launch a kernel on the GPU with one thread for each element.
     int numBlocks = (size + MAX_THREADS_X_IN_BLOCK_SIZE - 1) / MAX_THREADS_X_IN_BLOCK_SIZE;;
     int numThreads = MAX_THREADS_X_IN_BLOCK_SIZE;
@@ -195,6 +222,7 @@ cudaError_t arrayCalculations(double* c, const double* a, const double* b, unsig
         numBlocks = 1;
         numThreads = size;
     }
+
     calculateKernel <<<numBlocks, numThreads>>> (dev_c, dev_a, dev_b, size);
 
     // Check for any errors launching the kernel
@@ -211,6 +239,9 @@ cudaError_t arrayCalculations(double* c, const double* a, const double* b, unsig
         fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching arrayCalculations!\n", cudaStatus);
         goto Error;
     }
+
+    endCUDAWorkWithoutAllocation = clock();
+    timeUsedCUDAWorkWithoutAllocation += ((double)(endCUDAWorkWithoutAllocation - startCUDAWorkWithoutAllocation)) / CLOCKS_PER_SEC;
 
     // Copy output vector from GPU buffer to host memory.
     cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(double), cudaMemcpyDeviceToHost);

@@ -9,7 +9,7 @@ namespace RandomNumbersFileGenerator
     {
         static void Main(string[] args)
         {
-            var fileName = "file1_floats";
+            var fileName = "file2_floats";
             var arrayLength = Math.Pow(2, 33); // 8589934592
             //var arrayLength = Math.Pow(2, 21);
 
