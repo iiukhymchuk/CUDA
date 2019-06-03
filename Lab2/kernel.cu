@@ -32,6 +32,13 @@ __global__ void kernel(unsigned char* ptr, int ticks)
     int y = threadIdx.y + blockIdx.y * blockDim.y;
     int offset = x + y * blockDim.x * gridDim.x;
 
+    if (y < HEIGHT / 2 + 1 && y > HEIGHT / 2 - 1)
+    {
+        ptr[offset * 4 + 0] = ptr[offset * 4 + 1] =
+        ptr[offset * 4 + 2] = ptr[offset * 4 + 3] = 0;
+        return;
+    }
+
     double c0, c1, c2;
 
     double xInTime1 = inTime(x, ticks, 0.0);
