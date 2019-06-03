@@ -1,17 +1,23 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include <stdio.h>
-#include <math.h>
 #include "cpu_anim.h"
 
-#define W 512
-#define H 512
-#define MAXX 3.1415628*2 // Масштаб по оси X - 2*PI
+#define W 640
+#define H 480
+#define MAXX 20
 #define MAXY 1
 #define MINY -1
-#define DT 0.1
+#define DT 5
 
-#define DIM 512
+#define DIM_WIDTH (W)
+#define DIM_HEIGHT (H)
+
+__device__ double formula(double x)
+{
+    return sin(5 * exp(cos(x / 5)));
+}
+
 
 __global__ void kernel(unsigned char* ptr, int ticks)
 {
@@ -19,13 +25,19 @@ __global__ void kernel(unsigned char* ptr, int ticks)
     int y = threadIdx.y + blockIdx.y * blockDim.y;
     int offset = x + y * blockDim.x * gridDim.x;
 
-    float c0, c1, c2;
+    double c0, c1, c2;
 
-    c0 = abs(H / (MAXY - MINY) * (sin((x + 0.0) / W * (MAXX + ticks * DT)) - MINY) - y);
-    c1 = abs(H / (MAXY - MINY) * (sin((x + 0.5) / W * (MAXX + ticks * DT)) - MINY) - y);
-    c2 = abs(H / (MAXY - MINY) * (sin((x - 0.5) / W * (MAXX + ticks * DT)) - MINY) - y);
+    double time = ticks * DT;
 
-    if (c0 <= 1 || c1 <= 1 || c2 <= 1)
+    double xMappedInTime1 = (x + time) / W * MAXX;
+    double xMappedInTime2 = (x + time + 0.5) / W * MAXX;
+    double xMappedInTime3 = (x + time - 0.5) / W * MAXX;
+
+    c0 = abs(H / (MAXY - MINY) * (formula(xMappedInTime1) - MINY) - y);
+    c1 = abs(H / (MAXY - MINY) * (formula(xMappedInTime2) - MINY) - y);
+    c2 = abs(H / (MAXY - MINY) * (formula(xMappedInTime3) - MINY) - y);
+
+    if (c0 <= 1.5 || c1 <= 1.5 || c2 <= 1.5)
         ptr[offset * 4 + 1] = ptr[offset * 4 + 2] = 0;
     else
         ptr[offset * 4 + 1] = ptr[offset * 4 + 2] = 255;
@@ -41,7 +53,6 @@ struct DataBlock
     CPUAnimBitmap* bitmap;
 };
 
-// Освободить выделенную память устройства
 void cleanup(DataBlock* d)
 {
     cudaFree(d->dev_bitmap);
@@ -49,9 +60,9 @@ void cleanup(DataBlock* d)
 
 void generate_frame(DataBlock* d, int ticks)
 {
-    dim3 blocks(DIM / 16, DIM / 16);
+    dim3 blocks(DIM_WIDTH / 16, DIM_HEIGHT / 16);
     dim3 threads(16, 16);
-    kernel <<<blocks, threads >> > (d->dev_bitmap, ticks);
+    kernel <<<blocks, threads>>> (d->dev_bitmap, ticks);
 
     cudaMemcpy(d->bitmap->get_ptr(),
         d->dev_bitmap,
@@ -63,7 +74,7 @@ void generate_frame(DataBlock* d, int ticks)
 int main(void)
 {
     DataBlock data;
-    CPUAnimBitmap bitmap(DIM, DIM, &data);
+    CPUAnimBitmap bitmap(DIM_WIDTH, DIM_HEIGHT, &data);
     data.bitmap = &bitmap;
 
     cudaMalloc((void**)& data.dev_bitmap,
